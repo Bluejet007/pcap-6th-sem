@@ -67,6 +67,16 @@ template <typename T, std::uint8_t N> template <typename U> ArrayND<T, N> ArrayN
 
 
 /* Assignment Operators */
+template <typename T, std::uint8_t N> T ArrayND<T, N>::operator[](uint8_t i) const {
+    return values.at(i);
+}
+
+
+template <typename T, std::uint8_t N> T& ArrayND<T, N>::operator[](uint8_t i) {
+    return values.at(i);
+}
+
+
 template <typename T, std::uint8_t N> ArrayND<T, N>& ArrayND<T, N>::operator+=(const ArrayND<T, N>& otherArr) {
     for(std::uint8_t i = 0; i < N; i++)
         values[i] += otherArr.values[i];

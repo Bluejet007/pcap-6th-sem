@@ -26,6 +26,8 @@ template <typename T, std::uint8_t N> class ArrayND {
     template <typename U> ArrayND<T, N> operator/(const U scalar) const;
 
     /* Assignment Operators */
+    T operator[](uint8_t i) const;
+    T& operator[](uint8_t i);
     ArrayND<T, N>& operator=(const ArrayND<T, N>& otherArr);
     ArrayND<T, N>& operator+=(const ArrayND<T, N>& otherArr);
     ArrayND<T, N>& operator-=(const ArrayND<T, N>& otherArr);
