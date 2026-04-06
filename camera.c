@@ -1,6 +1,7 @@
 #include <math.h>
 #include <GL/glut.h>
 #include "camera.h"
+#include "render.h"
 
 float camX = 0.0f, camY = 0.0f, camZ = 2.0f;
 float dirX, dirY, dirZ;
@@ -10,8 +11,6 @@ float pitch = 0.0f;
 
 float lastX = 400, lastY = 300;
 int firstMouse = 1;
-
-#define PI 3.14159265f
 
 void mouseMotion(int x, int y){
     if(firstMouse){
