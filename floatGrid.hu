@@ -1,0 +1,121 @@
+#define FloatGrid_H // Switched around preprocessor directiives as this file is incomplete
+#ifndef FloatGrid_H
+
+class FloatGrid {
+    private:
+    float3 *data;
+
+    public:
+    /* Variables */
+    std::size_t len, byteSize;
+
+    /* Constructors */
+    explicit FloatGrid(const std::size_t size);
+    FloatGrid(const std::initializer_list<float3> values);
+    FloatGrid(const float3[] values, const std::size_t);
+
+    /* Arthmetic Operators */
+    inline FloatGrid operator+(const FloatGrid& otherP) const;
+    inline FloatGrid operator-(const FloatGrid& otherP) const;
+    inline FloatGrid operator/(const FloatGrid& otherP) const;
+    inline FloatGrid operator*(const FloatGrid& otherP) const;
+
+    /* Assignment Operators */
+    FloatGrid& operator=(const FloatGrid& otherP);
+    FloatGrid& operator+=(const FloatGrid& otherP);
+    FloatGrid& operator-=(const FloatGrid& otherP);
+    FloatGrid& operator*=(const FloatGrid& otherP);
+    FloatGrid& operator/=(const FloatGrid& otherP);
+
+    /* toString() */
+    friend std::ostream& operator<<(std::ostream& os, const FloatGrid& p);
+};
+
+
+/* Constructors */
+FloatGrid::FloatGrid(const std::size_t size): len(size), byteSize(sizeof(float3) * size) {
+    cudaMalloc((void **) &data, sizeof(float3) * size);
+}
+
+FloatGrid::FloatGrid(const std::initializer_list<float3> values): len(values.size()), byteSize(sizeof(float3) * values.size()) {
+    cudaMalloc((void **) &data, sizeof(float3) * values.size());
+    cudaMemcpy(data, values.begin(), sizeof(float3) * values.size(), cudaMemcpyHostToDevice);
+}
+
+FloatGrid::FloatGrid(const float3[] values, const std::size_t length) len(length), byteSize(sizeof(float3) * length) {
+    cudaMalloc((void **) &data, sizeof(float3) * length);
+    cudaMemcpy(data, values, sizeof(float3) * length, cudaMemcpyHostToDevice);
+}
+
+
+/* Arthmetic Operators */
+inline FloatGrid FloatGrid::operator+(const FloatGrid& otherP) const {
+    return FloatGrid(pos + otherP.pos, vel + otherP.vel);
+}
+
+inline FloatGrid FloatGrid::operator-(const FloatGrid& otherP) const {
+    return FloatGrid(pos - otherP.pos, vel - otherP.vel);
+}
+
+inline FloatGrid FloatGrid::operator*(const FloatGrid& otherP) const {
+    return FloatGrid(pos * otherP.pos, vel * otherP.vel);
+}
+
+inline FloatGrid FloatGrid::operator/(const FloatGrid& otherP) const {
+    return FloatGrid(pos / otherP.pos, vel / otherP.vel);
+}
+
+
+/* Assignment Operators */
+FloatGrid& FloatGrid::operator=(const FloatGrid& otherP) {
+    if(this != &otherP) {
+        pos = otherP.pos;
+        vel = otherP.vel;
+    }
+
+    return *this;
+}
+
+FloatGrid& FloatGrid::operator+=(const FloatGrid& otherP) {
+    pos += otherP.pos;
+    vel += otherP.vel;
+
+    return *this;
+}
+
+FloatGrid& FloatGrid::operator-=(const FloatGrid& otherP) {
+    pos -= otherP.pos;
+    vel -= otherP.vel;
+
+    return *this;
+}
+
+FloatGrid& FloatGrid::operator*=(const FloatGrid& otherP) {
+    pos *= otherP.pos;
+    vel *= otherP.vel;
+
+    return *this;
+}
+
+FloatGrid& FloatGrid::operator/=(const FloatGrid& otherP) {
+    pos /= otherP.pos;
+    vel /= otherP.vel;
+
+    return *this;
+}
+
+
+/* toString() */
+std::ostream& operator<<(std::ostream& os, const FloatGrid& p) {
+    os << "Pos: [ ";
+    for(float val: p.pos)
+        os << val << ' ';
+    
+    os << "] | Vel: [ ";
+    for(float val: p.vel)
+        os << val << ' ';
+    
+    return os << ']';
+}
+
+#endif
