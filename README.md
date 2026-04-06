@@ -5,5 +5,5 @@
 
 ## Credits
 - [Faiz]()
-- [Manav]()
+- [Manav](github.com/DeathArrow2468)
 - [Rachit](github.com/Bluejet007)
