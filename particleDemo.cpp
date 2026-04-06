@@ -1,16 +1,14 @@
 #include <iostream>
-#include "particle.hpp"
+#include "particleType.hpp"
 
 int main() {
-    ArrayND<float, 3> pos = ArrayND<float, 3>(3), vel = ArrayND<float, 3>(1, 2, 3);
-    std::cout << pos << ' ' << vel << std::endl << std::endl;
+    std::valarray<float> p1 = std::valarray<float>({1, 2, 3}), v1 = std::valarray<float>({3, 3, 3}), p2 = std::valarray<float>({0, 2, 4}), v2 = std::valarray<float>({1, 2, -1});
+    Particle part1 = Particle(p1, v1),
+    part2 = Particle(p2, v2);
 
-    Particle part = Particle(pos, vel);
-    std::cout << part << std::endl << std::endl;
-
-    std::cout << ArrayND<uint16_t, 2>(2.5, 7.9) << std::endl;
-
-    std::cout << (vel / 2) << std::endl;
+    std::cout << part1 << std::endl << std::endl;
+    std::cout << part2 << std::endl << std::endl;
+    std::cout << Particle(part1.position + part2.position, part1.velocity * part2.velocity * 10) << std::endl << std::endl;
 
     return 0;
 }

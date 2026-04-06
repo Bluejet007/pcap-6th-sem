@@ -1,26 +1,37 @@
 #ifndef PARTICLE_H
 #define PARTICLE_H
 
-#include "dataTypes.hpp"
+#include <valarray>
+#include <initializer_list>
 
 class Particle {
+    private:
+    
     public:
+    std::valarray<float> position, velocity;
     /* Constructors */
     Particle();
-    Particle(const ArrayND<float, 3> pos, const ArrayND<float, 3> vel);
+    Particle(const std::valarray<float> pos, const std::valarray<float> vel);
+    Particle(const std::initializer_list<std::initializer_list<float>> pos, const std::initializer_list<std::initializer_list<float>> vel);
 
     /* toString() */
     friend std::ostream& operator<<(std::ostream& os, const Particle& p);
-
-    private:
-    ArrayND<float, 3> position, velocity;
 };
 
 Particle::Particle(): position(), velocity() {}
-Particle::Particle(const ArrayND<float, 3> pos, const ArrayND<float, 3> vel): position(pos), velocity(vel) {}
+Particle::Particle(const std::valarray<float> pos, const std::valarray<float> vel): position(pos), velocity(vel) {}
+// Particle::Particle(const std::initializer_list<std::initializer_list<float>> pos, const std::initializer_list<std::initializer_list<float>> vel): position(pos), velocity(vel) {}
 
 std::ostream& operator<<(std::ostream& os, const Particle& p) {
-    return os << "Pos: " << p.position << " | Vel: " << p.velocity;
+    os << "Pos: [ ";
+    for(float val: p.position)
+        os << val << ' ';
+    
+    os << "] | Vel: [ ";
+    for(float val: p.velocity)
+        os << val << ' ';
+    
+    return os << ']';
 }
 
 #endif
