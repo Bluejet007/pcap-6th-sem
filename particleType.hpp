@@ -1,17 +1,16 @@
 #ifndef PARTICLE_H
 #define PARTICLE_H
 
-#include <valarray>
-#include <initializer_list>
+#include "arrayType.hpp"
 
 class Particle {
     public:
     /* Variables */
-    std::valarray<float> pos, vel;
+    ArrayND<float, 3> pos, vel;
 
     /* Constructors */
-    explicit Particle(const std::size_t dimensions = 3);
-    Particle(const std::valarray<float> position, const std::valarray<float> velocity);
+    explicit Particle(const float fillValue = 0);
+    Particle(const ArrayND<float, 3> position, const ArrayND<float, 3> velocity);
     Particle(const std::initializer_list<float> position, const std::initializer_list<float> velocity);
 
     /* Arthmetic Operators */
@@ -33,8 +32,8 @@ class Particle {
 
 
 /* Constructors */
-explicit Particle::Particle(const std::size_t dimensions): pos(dimensions), vel(dimensions) {}
-Particle::Particle(const std::valarray<float> position, const std::valarray<float> velocity): pos(position), vel(velocity) {}
+Particle::Particle(const std::size_t dimensions): pos(dimensions), vel(dimensions) {}
+Particle::Particle(const ArrayND<float, 3> position, const ArrayND<float, 3> velocity): pos(position), vel(velocity) {}
 Particle::Particle(const std::initializer_list<float> position, const std::initializer_list<float> velocity): pos(position), vel(velocity) {}
 
 
