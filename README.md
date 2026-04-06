@@ -4,6 +4,6 @@
 - [GPU Fluid simulation](https://developer.nvidia.com/gpugems/gpugems/part-vi-beyond-triangles/chapter-38-fast-fluid-dynamics-simulation-gpu) by Nvidia
 
 ## Credits
-- [Faiz]()
+- [Faiz](github.com/faizisCoding)
 - [Manav](github.com/DeathArrow2468)
 - [Rachit](github.com/Bluejet007)
