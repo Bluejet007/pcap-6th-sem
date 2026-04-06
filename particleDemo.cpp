@@ -2,13 +2,16 @@
 #include "particleType.hpp"
 
 int main() {
-    std::valarray<float> p1 = std::valarray<float>({1, 2, 3}), v1 = std::valarray<float>({3, 3, 3}), p2 = std::valarray<float>({0, 2, 4}), v2 = std::valarray<float>({1, 2, -1});
-    Particle part1 = Particle(p1, v1),
-    part2 = Particle(p2, v2);
-
-    std::cout << part1 << std::endl << std::endl;
-    std::cout << part2 << std::endl << std::endl;
-    std::cout << Particle(part1.position + part2.position, part1.velocity * part2.velocity * 10) << std::endl << std::endl;
+    Particle part1 = Particle({1, 2, 3}, {3, 3, 3}),
+    part2 = Particle({0, 2, 4}, {1, 2, -1});
+    
+    std::cout << "P0- " << Particle() << std::endl << std::endl;
+    std::cout << "P1- " << part1 << std::endl << std::endl;
+    std::cout << "P2- " << part2 << std::endl << std::endl;
+    
+    Particle part3 = part1 + part2;
+    part3.vel *= 10;
+    std::cout << "P3- " << part3 << std::endl;
 
     return 0;
 }
