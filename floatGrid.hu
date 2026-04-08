@@ -15,6 +15,7 @@ class FloatGrid {
     static std::size_t reserveSize[reservesAmt];
     static bool reserveUsed[reservesAmt];
     void setReserve(const std::size_t length);
+    bool external = false;
 
     float4 *data;
     std::uint8_t rIdx;
@@ -28,6 +29,7 @@ class FloatGrid {
     FloatGrid(const std::size_t size);
     FloatGrid(const std::initializer_list<float4> values);
     FloatGrid(const float4 values[], const std::size_t);
+    FloatGrid(float4 *devicePtr, std::size_t length);
     static void initReserves(const std::size_t length);
 
     /* Arthmetic Operators */
@@ -43,6 +45,7 @@ class FloatGrid {
     FloatGrid& operator*=(const FloatGrid& otherP);
     FloatGrid& operator/=(const FloatGrid& otherP);
     float4* getData() const;
+    float4* devicePtr() const;
 
     /* toString() */
     // friend std::ostream& operator<<(std::ostream& os, const FloatGrid& p);
@@ -60,7 +63,7 @@ inline bool FloatGrid::reserveUsed[reservesAmt] = {false};
 
 void FloatGrid::setReserve(const std::size_t length) {
     for(std::uint8_t i = 0; i < reservesAmt; i++)
-        if(!reserveUsed[i] && reserveSize[i] <= sizeof(float4) * length) {
+        if(!reserveUsed[i] && reserveSize[i] >= sizeof(float4) * length) {
             reserveUsed[i] = true;
             rIdx = i;
             data = reserves[i];
@@ -85,6 +88,8 @@ FloatGrid::FloatGrid(const float4 values[], const std::size_t length): len(lengt
     setReserve(length);
     cudaMemcpy(data, values, sizeof(float4) * length, cudaMemcpyHostToDevice);
 }
+
+FloatGrid::FloatGrid(float4 *devicePtr, std::size_t length): data(devicePtr), len(length), byteSize(sizeof(float4) * length), external(true), rIdx(255) {}
 
 void FloatGrid::initReserves(const std::size_t length) {
     for(uint8_t i = 0; i < reservesAmt; i++) {
@@ -164,9 +169,8 @@ FloatGrid FloatGrid::operator/(const FloatGrid& otherP) const {
 /* Assignment Operators */
 FloatGrid& FloatGrid::operator=(const FloatGrid& otherP) {
     if(this != &otherP) {
-        cudaMemcpy(data, otherP.data, byteSize, cudaMemcpyDeviceToDevice);
+        cudaMemcpy(data, otherP.data, std::min(byteSize, otherP.byteSize), cudaMemcpyDeviceToDevice);
         len = otherP.len;
-        byteSize = otherP.byteSize;
     }
 
     return *this;
@@ -216,6 +220,10 @@ float4* FloatGrid::getData() const {
     return hData;
 }
 
+float4* FloatGrid::devicePtr() const {
+    return data;
+}
+
 
 /* toString() */
 // std::ostream& operator<<(std::ostream& os, const FloatGrid& p) {
@@ -246,7 +254,8 @@ void FloatGrid::debugReserves() {
 
 /* Destructor */
 FloatGrid::~FloatGrid() {
-    reserveUsed[rIdx] = false;
+    if (!external && rIdx < reservesAmt)
+        reserveUsed[rIdx] = false;
 }
 
 void FloatGrid::freeReserves() {
