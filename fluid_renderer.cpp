@@ -44,7 +44,7 @@
     cudaGraphicsResource* g_cudaVel[2];
 
     // ─── Simulation constants ─────────────────────────────────────────────────────
-    static constexpr int   N_PARTICLES   = 50'000;   // raise to 2M if VRAM allows
+    static constexpr int   N_PARTICLES   = 200'000;   // raise to 2M if VRAM allows
     static constexpr float BOX_HALF      = 1.0f;
     static constexpr float DAMPING       = 0.85f;
     static constexpr float DT            = 0.01666667f;
@@ -338,16 +338,18 @@
     {
         // CPU-side initialisation: random positions + velocities
         std::mt19937                     rng(42);
-        std::uniform_real_distribution<float> posD(-0.95f, 0.95f);
-        std::uniform_real_distribution<float> velD(-0.4f,  0.4f);
+        std::uniform_real_distribution<float> posxD(-0.95f, -0.15f);
+        std::uniform_real_distribution<float> posyD(-0.95f, 0.15f);
+        std::uniform_real_distribution<float> poszD(-0.95f, 0.95f);
+        std::uniform_real_distribution<float> velD(-0.2f,  0.2f);
 
         std::vector<float> positions(N_PARTICLES * 4);
         std::vector<float> velocities(N_PARTICLES * 4, 0.0f);
 
         for (int i = 0; i < N_PARTICLES; ++i) {
-            positions[i*4+0] = posD(rng);
-            positions[i*4+1] = posD(rng);
-            positions[i*4+2] = posD(rng);
+            positions[i*4+0] = posxD(rng);
+            positions[i*4+1] = posyD(rng);
+            positions[i*4+2] = poszD(rng);
             positions[i*4+3] = 0.0f;  // initial speed magnitude
 
             velocities[i*4+0] = velD(rng);
