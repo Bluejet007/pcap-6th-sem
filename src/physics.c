@@ -19,7 +19,7 @@ void repulsion(){
             float dx = p1->x - p2->x;
             float dy = p1->y - p2->y;
             float dz = p1->z - p2->z;
-            float dist = 10 * sqrt((dx*dx)+(dy*dy)+(dz*dz));
+            float dist = sqrt((dx*dx)+(dy*dy)+(dz*dz));
             // printf("%f\n", dist);
 
             // if(dist < check_radius && dist > 0.0001f){

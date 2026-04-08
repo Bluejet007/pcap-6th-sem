@@ -69,7 +69,8 @@ void mouse(int button, int state, int x, int y){
         float fx = (x / (float)width) * 2.0f - 1.0f;
         float fy = -((y / (float)height) * 2.0f - 1.0f);
 
-        spawnParticle(fx, fy); // create particle at clicked position
+        for(int i = 0; i < 50; i++)
+            spawnParticle(fx + 2 * (float) rand() / RAND_MAX, fy + 2 * (float) rand() / RAND_MAX); // create particle at clicked position
     }
     float zoomSpeed = 0.2f;
     // SCROLL UP → zoom in

@@ -1,7 +1,7 @@
 #ifndef PARTICLE_H
 #define PARTICLE_H
 
-#define MAX_PARTICLES 100
+#define MAX_PARTICLES 1000
 #define DOT_RADIUS 0.05f
 
 typedef struct {
