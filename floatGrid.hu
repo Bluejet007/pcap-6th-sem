@@ -50,6 +50,7 @@ class FloatGrid {
 
     /* Destructors */
     ~FloatGrid();
+    static void freeReserves();
 };
 
 inline float4* FloatGrid::reserves[reservesAmt] = {nullptr};
@@ -246,6 +247,14 @@ void FloatGrid::debugReserves() {
 /* Destructor */
 FloatGrid::~FloatGrid() {
     reserveUsed[rIdx] = false;
+}
+
+void FloatGrid::freeReserves() {
+    for(uint8_t i = 0; i < reservesAmt; i++) {
+        cudaFree(reserves[i]);
+        reserveUsed[i] = false;
+        reserveSize[i] = 0;
+    }
 }
 
 #endif
