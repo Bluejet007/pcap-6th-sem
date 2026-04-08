@@ -2,6 +2,55 @@
 #include "particle.h"
 #include <GL/glut.h>
 #include <math.h>
+#include <stdio.h>
+
+// Make a function to check if there are any particles in the 'secondary' radius and calculate
+// forces only on those particles
+
+float check_radius = DOT_RADIUS * 500;
+// So, for a dot this force only exists if another dot is within a RADIUS of 2*DOT_RADIUS
+// Function is non-linear
+void repulsion(){
+    for(int i=0; i<particleCount; i++){
+        for(int j=i+1; j<particleCount; j++){
+            Particle *p1 = &particles[i];
+            Particle *p2 = &particles[j];
+
+            float dx = p1->x - p2->x;
+            float dy = p1->y - p2->y;
+            float dz = p1->z - p2->z;
+            float dist = 10 * sqrt((dx*dx)+(dy*dy)+(dz*dz));
+            // printf("%f\n", dist);
+
+            // if(dist < check_radius && dist > 0.0001f){
+                
+                float nx = dx / dist;
+                float ny = dy / dist;
+                float nz = dz / dist;
+
+                float A = 0.001f;
+                // Now we know the direction in which they'll repel
+                // We should use Van der Waals but that's tough af especially in terms of computation
+                // float force = A * pow((check_radius - dist), 12) / (check_radius);
+                float force = A / pow(dist, 3);
+
+                // F = ma => dv = dF * dt / m => m = 1
+                float dvx = force * nx;
+                float dvy = force * ny;
+                float dvz = force * nz;
+
+                p1->vx += dvx;
+                p1->vy += dvy;
+                p1->vz += dvz;
+
+                p2->vx -= dvx;
+                p2->vy -= dvy;
+                p2->vz -= dvz;
+
+            // }
+        }
+    }
+}
 
 void handleCollisions(){    // NEEDS to be Optimized and CUDAed!!!
     for(int i=0; i<particleCount; i++){
@@ -68,6 +117,7 @@ void handleCollisions(){    // NEEDS to be Optimized and CUDAed!!!
 
 void update(){
     float radius = DOT_RADIUS;
+    float dampingFactor = -0.5f;
 
     for(int i=0; i<particleCount; i++){
         Particle *p = &particles[i];
@@ -79,29 +129,30 @@ void update(){
 
         if(p->y - radius < -0.8f){
             p->y = -0.8f + radius;
-            p->vy *= -1.0f;     // We flip the direction and no speed is lost
+            p->vy *= dampingFactor;     // We flip the direction and no speed is lost
         }
         if(p->y + radius > 0.8f){
             p->y = 0.8f - radius;
-            p->vy *= -1.0f;     
+            p->vy *= dampingFactor;     
         }
         if(p->x - radius < -0.8f){
             p->x = -0.8f + radius;
-            p->vx *= -1.0f;     
+            p->vx *= dampingFactor;     
         }
         if(p->x + radius > 0.8f){
             p->x = 0.8f - radius;
-            p->vx *= -1.0f;     
+            p->vx *= dampingFactor;     
         }
         if(p->z + DOT_RADIUS > 0.8f){
             p->z = 0.8f - DOT_RADIUS;
-            p->vz *= -1.0f;
+            p->vz *= dampingFactor;
         }
         if(p->z - DOT_RADIUS < -0.8f){
             p->z = -0.8f + DOT_RADIUS;
-            p->vz *= -1.0f;
+            p->vz *= dampingFactor;
         }
-        handleCollisions();
+        //handleCollisions();
+        repulsion();
     }
     glutPostRedisplay();
 }
