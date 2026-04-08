@@ -1,18 +1,34 @@
-#define FloatGrid_H // Switched around preprocessor directiives as this file is incomplete
 #ifndef FloatGrid_H
+#define FloatGrid_H
+
+#include <cuda.h>
+#include <cstdlib>
+#include <cstdint>
+#include <initializer_list>
+#include <ostream>
+
+static const uint8_t reservesAmt = 8;
 
 class FloatGrid {
     private:
-    float3 *data;
+    static float4 *reserves[reservesAmt];
+    static std::size_t reserveSize[reservesAmt];
+    static bool reserveUsed[reservesAmt];
+    void setReserve(const std::size_t length);
+
+    float4 *data;
+    std::uint8_t rIdx;
 
     public:
     /* Variables */
     std::size_t len, byteSize;
 
     /* Constructors */
-    explicit FloatGrid(const std::size_t size);
-    FloatGrid(const std::initializer_list<float3> values);
-    FloatGrid(const float3[] values, const std::size_t);
+    FloatGrid();
+    FloatGrid(const std::size_t size);
+    FloatGrid(const std::initializer_list<float4> values);
+    FloatGrid(const float4 values[], const std::size_t);
+    static void initReserves(const std::size_t length);
 
     /* Arthmetic Operators */
     inline FloatGrid operator+(const FloatGrid& otherP) const;
@@ -26,96 +42,210 @@ class FloatGrid {
     FloatGrid& operator-=(const FloatGrid& otherP);
     FloatGrid& operator*=(const FloatGrid& otherP);
     FloatGrid& operator/=(const FloatGrid& otherP);
+    float4* getData() const;
 
     /* toString() */
-    friend std::ostream& operator<<(std::ostream& os, const FloatGrid& p);
+    // friend std::ostream& operator<<(std::ostream& os, const FloatGrid& p);
+    static void debugReserves();
+
+    /* Destructors */
+    ~FloatGrid();
 };
+
+inline float4* FloatGrid::reserves[reservesAmt] = {nullptr};
+inline std::size_t FloatGrid::reserveSize[reservesAmt] = {0};
+inline bool FloatGrid::reserveUsed[reservesAmt] = {false};
+
+
+void FloatGrid::setReserve(const std::size_t length) {
+    for(std::uint8_t i = 0; i < reservesAmt; i++)
+        if(!reserveUsed[i] && reserveSize[i] <= sizeof(float4) * length) {
+            reserveUsed[i] = true;
+            rIdx = i;
+            data = reserves[i];
+            break;
+        }
+}
 
 
 /* Constructors */
-FloatGrid::FloatGrid(const std::size_t size): len(size), byteSize(sizeof(float3) * size) {
-    cudaMalloc((void **) &data, sizeof(float3) * size);
+FloatGrid::FloatGrid(): len(0), byteSize(0), data(nullptr) {}
+
+FloatGrid::FloatGrid(const std::size_t length): len(length), byteSize(sizeof(float4) * length) {
+    setReserve(length);
 }
 
-FloatGrid::FloatGrid(const std::initializer_list<float3> values): len(values.size()), byteSize(sizeof(float3) * values.size()) {
-    cudaMalloc((void **) &data, sizeof(float3) * values.size());
-    cudaMemcpy(data, values.begin(), sizeof(float3) * values.size(), cudaMemcpyHostToDevice);
+FloatGrid::FloatGrid(const std::initializer_list<float4> values): len(values.size()), byteSize(sizeof(float4) * values.size()) {
+    setReserve(values.size());
+    cudaMemcpy(data, values.begin(), sizeof(float4) * values.size(), cudaMemcpyHostToDevice);
 }
 
-FloatGrid::FloatGrid(const float3[] values, const std::size_t length) len(length), byteSize(sizeof(float3) * length) {
-    cudaMalloc((void **) &data, sizeof(float3) * length);
-    cudaMemcpy(data, values, sizeof(float3) * length, cudaMemcpyHostToDevice);
+FloatGrid::FloatGrid(const float4 values[], const std::size_t length): len(length), byteSize(sizeof(float4) * length) {
+    setReserve(length);
+    cudaMemcpy(data, values, sizeof(float4) * length, cudaMemcpyHostToDevice);
+}
+
+void FloatGrid::initReserves(const std::size_t length) {
+    for(uint8_t i = 0; i < reservesAmt; i++) {
+        reserveSize[i] = sizeof(float4) * length;
+        reserveUsed[i] = false;
+        cudaMalloc((void **) &reserves[i], reserveSize[i]);
+    }
 }
 
 
 /* Arthmetic Operators */
-inline FloatGrid FloatGrid::operator+(const FloatGrid& otherP) const {
-    return FloatGrid(pos + otherP.pos, vel + otherP.vel);
+__global__ void _FGAdd(const float4 *a, const float4 *b, float4 *res, const std::size_t n) {
+    std::size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(i < n)
+        res[i] = make_float4(a[i].x + b[i].x, a[i].y + b[i].y, a[i].z + b[i].z, 0);
+}
+FloatGrid FloatGrid::operator+(const FloatGrid& otherP) const {
+    std::size_t resLen = len < otherP.len ? len : otherP.len;
+    FloatGrid res = resLen;
+    const uint blockSize = 256;
+    const uint gridSize = (resLen + blockSize - 1) / blockSize;
+
+    _FGAdd<<<gridSize, blockSize>>>(data, otherP.data, res.data, resLen);
+    return res;
 }
 
-inline FloatGrid FloatGrid::operator-(const FloatGrid& otherP) const {
-    return FloatGrid(pos - otherP.pos, vel - otherP.vel);
+__global__ void _FGSub(const float4 *a, const float4 *b, float4 *res, const std::size_t n) {
+    std::size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(i < n)
+        res[i] = make_float4(a[i].x - b[i].x, a[i].y - b[i].y, a[i].z - b[i].z, 0);
+}
+FloatGrid FloatGrid::operator-(const FloatGrid& otherP) const {
+    std::size_t resLen = len < otherP.len ? len : otherP.len;
+    FloatGrid res = resLen;
+    const uint blockSize = 256;
+    const uint gridSize = (resLen + blockSize - 1) / blockSize;
+
+    _FGSub<<<gridSize, blockSize>>>(data, otherP.data, res.data, resLen);
+    return res;
 }
 
-inline FloatGrid FloatGrid::operator*(const FloatGrid& otherP) const {
-    return FloatGrid(pos * otherP.pos, vel * otherP.vel);
+__global__ void _FGMul(const float4 *a, const float4 *b, float4 *res, const std::size_t n) {
+    std::size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(i < n)
+        res[i] = make_float4(a[i].x * b[i].x, a[i].y * b[i].y, a[i].z * b[i].z, 0);
+}
+FloatGrid FloatGrid::operator*(const FloatGrid& otherP) const {
+    std::size_t resLen = len < otherP.len ? len : otherP.len;
+    FloatGrid res = resLen;
+    const uint blockSize = 256;
+    const uint gridSize = (resLen + blockSize - 1) / blockSize;
+
+    _FGMul<<<gridSize, blockSize>>>(data, otherP.data, res.data, resLen);
+    return res;
 }
 
-inline FloatGrid FloatGrid::operator/(const FloatGrid& otherP) const {
-    return FloatGrid(pos / otherP.pos, vel / otherP.vel);
+__global__ void _FGDiv(const float4 *a, const float4 *b, float4 *res, const std::size_t n) {
+    std::size_t i = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if(i < n)
+        res[i] = make_float4(a[i].x / b[i].x, a[i].y / b[i].y, a[i].z / b[i].z, 0);
+}
+FloatGrid FloatGrid::operator/(const FloatGrid& otherP) const {
+    std::size_t resLen = len < otherP.len ? len : otherP.len;
+    FloatGrid res = resLen;
+    const uint blockSize = 256;
+    const uint gridSize = (resLen + blockSize - 1) / blockSize;
+
+    _FGDiv<<<gridSize, blockSize>>>(data, otherP.data, res.data, resLen);
+    return res;
 }
 
 
 /* Assignment Operators */
 FloatGrid& FloatGrid::operator=(const FloatGrid& otherP) {
     if(this != &otherP) {
-        pos = otherP.pos;
-        vel = otherP.vel;
+        cudaMemcpy(data, otherP.data, byteSize, cudaMemcpyDeviceToDevice);
+        len = otherP.len;
+        byteSize = otherP.byteSize;
     }
 
     return *this;
 }
 
 FloatGrid& FloatGrid::operator+=(const FloatGrid& otherP) {
-    pos += otherP.pos;
-    vel += otherP.vel;
+    std::size_t resLen = len < otherP.len ? len : otherP.len;
+    const uint blockSize = 256;
+    const uint gridSize = (resLen + blockSize - 1) / blockSize;
 
+    _FGAdd<<<gridSize, blockSize>>>(data, otherP.data, data, resLen);
     return *this;
 }
 
 FloatGrid& FloatGrid::operator-=(const FloatGrid& otherP) {
-    pos -= otherP.pos;
-    vel -= otherP.vel;
+    std::size_t resLen = len < otherP.len ? len : otherP.len;
+    const uint blockSize = 256;
+    const uint gridSize = (resLen + blockSize - 1) / blockSize;
 
+    _FGSub<<<gridSize, blockSize>>>(data, otherP.data, data, resLen);
     return *this;
 }
 
 FloatGrid& FloatGrid::operator*=(const FloatGrid& otherP) {
-    pos *= otherP.pos;
-    vel *= otherP.vel;
+    std::size_t resLen = len < otherP.len ? len : otherP.len;
+    const uint blockSize = 256;
+    const uint gridSize = (resLen + blockSize - 1) / blockSize;
 
+    _FGMul<<<gridSize, blockSize>>>(data, otherP.data, data, resLen);
     return *this;
 }
 
 FloatGrid& FloatGrid::operator/=(const FloatGrid& otherP) {
-    pos /= otherP.pos;
-    vel /= otherP.vel;
+    std::size_t resLen = len < otherP.len ? len : otherP.len;
+    const uint blockSize = 256;
+    const uint gridSize = (resLen + blockSize - 1) / blockSize;
 
+    _FGDiv<<<gridSize, blockSize>>>(data, otherP.data, data, resLen);
     return *this;
+}
+
+float4* FloatGrid::getData() const {
+    float4 *hData = (float4 *) malloc(byteSize);
+
+    cudaMemcpy(hData, data, byteSize, cudaMemcpyDeviceToHost);
+
+    return hData;
 }
 
 
 /* toString() */
-std::ostream& operator<<(std::ostream& os, const FloatGrid& p) {
-    os << "Pos: [ ";
-    for(float val: p.pos)
-        os << val << ' ';
+// std::ostream& operator<<(std::ostream& os, const FloatGrid& p) {
+//     os << "Pos: [ ";
+//     for(float val: p.pos)
+//         os << val << ' ';
     
-    os << "] | Vel: [ ";
-    for(float val: p.vel)
-        os << val << ' ';
+//     os << "] | Vel: [ ";
+//     for(float val: p.vel)
+//         os << val << ' ';
     
-    return os << ']';
+//     return os << ']';
+// }
+
+void FloatGrid::debugReserves() {
+    std::cout << "Reserves amount: " << +reservesAmt << std::endl;
+
+    for(uint8_t i = 0; i < reservesAmt; i++) {
+        std::cout << +i << std::endl << "Allocated: " << (reserveUsed[i] ? "true" : "false") << std::endl;
+
+        if(reserveUsed[i]) {
+            std::cout << "Size: " << reserveSize[i] / sizeof(float4) << std::endl << "Size (in bytes): " << reserveSize[i] << std::endl << "Raw pointer: " << reserves[i] << std::endl;
+        }
+        std::cout << std::endl;
+    }
+}
+
+
+/* Destructor */
+FloatGrid::~FloatGrid() {
+    reserveUsed[rIdx] = false;
 }
 
 #endif
