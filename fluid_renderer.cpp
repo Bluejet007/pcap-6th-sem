@@ -71,7 +71,6 @@ static GLuint g_velVBO[2]    = {};   // ping-pong velocity buffers
 static int    g_pingPong     = 0;
 
 static GLuint g_renderProg   = 0;    // vertex + fragment
-static GLuint g_updateProg   = 0;    // compute shader (simulation step)
 
 // FBO for optional depth-blur pass
 static GLuint g_fbo          = 0;
@@ -153,89 +152,6 @@ void main()
 // Each invocation handles one particle.
 // Buffers: binding 0 = read positions (vec4), binding 1 = write positions (vec4)
 //          binding 2 = read velocities (vec4), binding 3 = write velocities (vec4)
-static const char* COMPUTE_SRC = R"GLSL(
-#version 450 core
-
-layout(local_size_x = 256) in;
-
-// float4 layout: xyz = position, w = speed magnitude (written each frame)
-layout(std430, binding = 0) readonly  buffer PosIn   { vec4 posIn[];  };
-layout(std430, binding = 1) writeonly buffer PosOut  { vec4 posOut[]; };
-layout(std430, binding = 2) readonly  buffer VelIn   { vec4 velIn[];  };
-layout(std430, binding = 3) writeonly buffer VelOut  { vec4 velOut[]; };
-
-uniform float uDT;
-uniform float uDamping;
-uniform vec3  uMouseWorld;     // unprojected mouse position (z=0 plane)
-uniform float uMouseRadius;
-uniform float uMouseStrength;
-uniform vec2  uMouseForce;     // (dx, dy) in world units
-uniform float uTime;
-
-// Simple LCG-based pseudo-random turbulence
-float hash(uint n)
-{
-    n = (n << 13u) ^ n;
-    n = n * (n * n * 15731u + 0x789221u) + 0x13763125u;
-    return float(n & 0x7fffffffu) / float(0x7fffffff);
-}
-
-void main()
-{
-    uint id = gl_GlobalInvocationID.x;
-    // Bounds guard (N may not be multiple of 256)
-    // We rely on the host to launch ceil(N/256) groups; excess threads harmless
-    // if buffer is padded, but guard anyway:
-    // (no uniform N here — caller ensures exact dispatch)
-
-    vec3 pos = posIn[id].xyz;
-    vec3 vel = velIn[id].xyz;
-
-    // ── Mouse impulse ────────────────────────────────────────────────────────
-    vec3  toMouse = uMouseWorld - pos;
-    float dist2   = dot(toMouse, toMouse);
-    float r2      = uMouseRadius * uMouseRadius;
-    if (dist2 < r2) {
-        float falloff = exp(-dist2 / (0.5 * r2));       // Gaussian
-        float speed   = length(uMouseForce);
-        vec3  dir     = vec3(uMouseForce, 0.0) * (speed > 0.0001 ? 1.0/speed : 0.0);
-        vel += dir * speed * uMouseStrength * falloff * uDT * 60.0;
-    }
-
-    // ── Micro-turbulence (keeps fluid alive) ────────────────────────────────
-    float n0 = hash(id * 3u  + uint(uTime * 30.0));
-    float n1 = hash(id * 7u  + uint(uTime * 30.0) + 1u);
-    float n2 = hash(id * 13u + uint(uTime * 30.0) + 2u);
-    vel += (vec3(n0, n1, n2) - 0.5) * 0.004;
-
-    // ── Gravity / buoyancy (very light upward drift) ────────────────────────
-    vel.y += 0.02 * uDT;
-    // Light inward attraction keeps particles from sticking to walls too long
-    vel -= pos * 0.008 * uDT * 60.0;
-
-    // ── Integrate ────────────────────────────────────────────────────────────
-    pos += vel * uDT;
-
-    // ── Bounding box elastic reflection ─────────────────────────────────────
-    const float B = 1.0;
-    // X
-    if (pos.x >  B) { pos.x =  2.0*B - pos.x; vel.x = -abs(vel.x) * uDamping; }
-    if (pos.x < -B) { pos.x = -2.0*B - pos.x; vel.x =  abs(vel.x) * uDamping; }
-    // Y
-    if (pos.y >  B) { pos.y =  2.0*B - pos.y; vel.y = -abs(vel.y) * uDamping; }
-    if (pos.y < -B) { pos.y = -2.0*B - pos.y; vel.y =  abs(vel.y) * uDamping; }
-    // Z
-    if (pos.z >  B) { pos.z =  2.0*B - pos.z; vel.z = -abs(vel.z) * uDamping; }
-    if (pos.z < -B) { pos.z = -2.0*B - pos.z; vel.z =  abs(vel.z) * uDamping; }
-
-    // Velocity damping
-    vel *= (1.0 - 0.008);
-
-    float spd = length(vel);
-    posOut[id] = vec4(pos, spd);
-    velOut[id] = vec4(vel, 0.0);
-}
-)GLSL";
 
 // ---------- Full-screen quad vertex shader (blur pass) -----------------------
 static const char* QUAD_VERT_SRC = R"GLSL(
@@ -445,7 +361,7 @@ static void initParticles()
                      GL_DYNAMIC_COPY);
         if (i == 1) // copy initial data to second buffer too
             glBufferData(GL_ARRAY_BUFFER, N_PARTICLES * 4 * sizeof(float),
-                         positions.data(), GL_DYNAMIC_COPY);
+                         positions.data(), GL_DRAW);
     }
 
     // Create ping-pong velocity SSBOs
@@ -454,7 +370,7 @@ static void initParticles()
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, g_velVBO[i]);
         glBufferData(GL_SHADER_STORAGE_BUFFER,
                      N_PARTICLES * 4 * sizeof(float),
-                     velocities.data(), GL_DYNAMIC_COPY);
+                     velocities.data(), GL_DRAW);
     }
 
     // VAO — always reads from the current "read" VBO (updated in display)
@@ -472,11 +388,6 @@ static void initGL()
     g_renderProg = linkProgram({
         compileShader(GL_VERTEX_SHADER,   VERT_SRC),
         compileShader(GL_FRAGMENT_SHADER, FRAG_SRC)
-    });
-
-    // ── Compute program ──────────────────────────────────────────────────────
-    g_updateProg = linkProgram({
-        compileShader(GL_COMPUTE_SHADER, COMPUTE_SRC)
     });
 
     // ── Blur program ─────────────────────────────────────────────────────────
@@ -497,6 +408,17 @@ static void initGL()
     glBindVertexArray(0);
 
     initParticles();
+    struct cudaGraphicsResource* g_cudaPos[2];
+    struct cudaGraphicsResource* g_cudaVel[2];
+
+    for (int i = 0; i < 2; ++i) {
+        cudaGraphicsGLRegisterBuffer(&g_cudaPos[i], g_vbo[i],
+            cudaGraphicsMapFlagsWriteDiscard);
+
+        cudaGraphicsGLRegisterBuffer(&g_cudaVel[i], g_velVBO[i],
+            cudaGraphicsMapFlagsWriteDiscard);
+    }
+
     setupFBO(g_width, g_height);
 
     glEnable(GL_BLEND);
@@ -529,39 +451,31 @@ static void unprojectMouse(float ndcX, float ndcY, float& wx, float& wy)
 }
 
 // ─── Simulation step (compute shader) ─────────────────────────────────────────
+// Forward declaration (implemented in your CUDA .cu file)
+extern void cudaStepSimulation(float time,
+                               GLuint posVBO,
+                               GLuint velVBO,
+                               int    pingPong,
+                               float  mouseDX,
+                               float  mouseDY,
+                               float  mouseNDC_X,
+                               float  mouseNDC_Y);
+
 static void stepSimulation(float time)
 {
-    int read  = g_pingPong;
-    int write = 1 - g_pingPong;
+    cudaStepSimulation(time,
+                       g_vbo[g_pingPong],
+                       g_velVBO[g_pingPong],
+                       g_pingPong,
+                       g_mouseDX,
+                       g_mouseDY,
+                       g_mouseNDC_X,
+                       g_mouseNDC_Y);
 
-    glUseProgram(g_updateProg);
+    // flip buffers (CUDA writes into "next")
+    g_pingPong = 1 - g_pingPong;
 
-    // Bind position buffers as SSBOs (they are also VBOs — dual binding is fine)
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, g_vbo[read]);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 1, g_vbo[write]);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 2, g_velVBO[read]);
-    glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 3, g_velVBO[write]);
-
-    float wx, wy;
-    unprojectMouse(g_mouseNDC_X, g_mouseNDC_Y, wx, wy);
-
-    glUniform1f(glGetUniformLocation(g_updateProg, "uDT"),            DT);
-    glUniform1f(glGetUniformLocation(g_updateProg, "uDamping"),       DAMPING);
-    glUniform3f(glGetUniformLocation(g_updateProg, "uMouseWorld"),    wx, wy, 0.0f);
-    glUniform1f(glGetUniformLocation(g_updateProg, "uMouseRadius"),   MOUSE_RADIUS);
-    glUniform1f(glGetUniformLocation(g_updateProg, "uMouseStrength"), MOUSE_STRENGTH);
-    glUniform2f(glGetUniformLocation(g_updateProg, "uMouseForce"),    g_mouseDX, g_mouseDY);
-    glUniform1f(glGetUniformLocation(g_updateProg, "uTime"),          time);
-
-    GLuint groups = (N_PARTICLES + 255) / 256;
-    glDispatchCompute(groups, 1, 1);
-
-    // Ensure compute writes are visible to the vertex shader
-    glMemoryBarrier(GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT | GL_SHADER_STORAGE_BARRIER_BIT);
-
-    g_pingPong = write;
-
-    // Decay mouse force
+    // decay mouse force
     g_mouseDX *= 0.85f;
     g_mouseDY *= 0.85f;
 }
@@ -744,12 +658,6 @@ int main(int argc, char** argv)
     // Verify we have the GL version we need
     const char* glver = reinterpret_cast<const char*>(glGetString(GL_VERSION));
     printf("OpenGL: %s\n", glver);
-
-    if (!GLEW_ARB_compute_shader) {
-        fprintf(stderr, "GL_ARB_compute_shader not available. "
-                        "Need OpenGL 4.3+.\n");
-        return 1;
-    }
 
     initGL();
 
