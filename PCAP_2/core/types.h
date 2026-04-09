@@ -8,11 +8,14 @@ struct Particle {
     Vec3 vel;
     float density;
     float pressure;
+    Vec3 initialPos;
 };
 
 struct Triangle {
     Vec3 v0, v1, v2;
     Vec3 normal;
+    Vec3 center;
+    Vec3 force;  
 };
 
 struct Vertex {

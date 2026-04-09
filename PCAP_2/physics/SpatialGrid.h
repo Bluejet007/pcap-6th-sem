@@ -17,15 +17,28 @@ struct KeyHasher {
     }
 };
 
+// unified cell
+struct GridCell {
+    std::vector<int> particleIndices;
+    std::vector<int> triangleIndices;
+};
+
 class SpatialGrid {
 public:
     float cellSize;
 
-    std::unordered_map<GridKey, std::vector<int>, KeyHasher> grid;
+    std::unordered_map<GridKey, GridCell, KeyHasher> grid;
 
     SpatialGrid(float cellSize);
 
     GridKey getKey(const Vec3& pos);
-    void build(const std::vector<Particle>& particles);
-    std::vector<int> getNeighbors(const Vec3& pos);
+
+    void clear();
+
+    void buildParticles(const std::vector<Particle>& particles);
+
+    void insertTriangle(int idx, const Vec3& pos);
+
+    std::vector<int> getNearbyParticles(const Vec3& pos);
+    std::vector<int> getNearbyTriangles(const Vec3& pos);
 };
