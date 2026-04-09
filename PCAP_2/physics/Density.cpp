@@ -7,7 +7,7 @@ float computeDensity(Particle &pi,
 
     float density = 0.0f;
 
-    auto neighbors = grid.getNeighbors(pi.pos);
+    auto neighbors = grid.getNearbyParticles(pi.pos);
 
     for (int j : neighbors) {
         Particle &pj = particles[j];

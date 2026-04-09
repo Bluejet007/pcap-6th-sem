@@ -1,6 +1,7 @@
 #include "GridRenderer.h"
 #include <glad/glad.h>
 #include <vector>
+#include "../core/types.h"
 
 // 🔹 Generate grid lines
 static std::vector<float> generateGrid(float size, int divisions) {
