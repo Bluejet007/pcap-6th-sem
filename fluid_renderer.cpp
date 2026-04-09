@@ -21,8 +21,8 @@
     *   ESC / Q          — quit
     */
 
-    // ─── Platform / include order matters ────────────────────────────────────────
-    #include <GL/glew.h>          // must come before any gl.h
+    // Platform / include order matters
+    #include <GL/glew.h>          // must come before any gl.h for some reason
     #ifdef __APPLE__
     #include <GLUT/glut.h>
     #else
@@ -43,19 +43,19 @@
     cudaGraphicsResource* g_cudaPos[2];
     cudaGraphicsResource* g_cudaVel[2];
 
-    // ─── Simulation constants ─────────────────────────────────────────────────────
-    static constexpr int   N_PARTICLES   = 200'000;   // raise to 2M if VRAM allows
+    // Simulation constants
+    static constexpr int   N_PARTICLES   = 200'000;   // raised to 2M if VRAM allows
     static constexpr float BOX_HALF      = 1.0f;
     static constexpr float DAMPING       = 0.85f;
     static constexpr float DT            = 0.01666667f;
     static constexpr float MOUSE_RADIUS  = 0.35f;     // world-space influence radius
     static constexpr float MOUSE_STRENGTH= 4.5f;
 
-    // ─── Window state ─────────────────────────────────────────────────────────────
+    // Window state
     static int   g_width  = 1280;
     static int   g_height = 720;
 
-    // ─── Camera state ─────────────────────────────────────────────────────────────
+    // Camera state
     static float g_azimuth   =  30.0f;   // degrees
     static float g_elevation =  20.0f;   // degrees
     static float g_distance  =   2.8f;
@@ -69,7 +69,7 @@
     static float g_mouseNDC_X = 0.0f, g_mouseNDC_Y = 0.0f; // current pos [-1,1]
     static float g_maxSpeed = 2.0f;
 
-    // ─── OpenGL handles ───────────────────────────────────────────────────────────
+    // OpenGL handles
     static GLuint g_vao          = 0;
     static GLuint g_vbo[2]       = {};   // ping-pong position+speed buffers
     static GLuint g_velVBO[2]    = {};   // ping-pong velocity buffers
@@ -85,9 +85,9 @@
     static GLuint g_quadVAO      = 0;
     static GLuint g_quadVBO      = 0;
 
-    // ─── Shader source strings ────────────────────────────────────────────────────
+    // Shader source strings
 
-    // ---------- Particle vertex shader -------------------------------------------
+    // Particle vertex shader
     static const char* VERT_SRC = R"GLSL(
     #version 450 core
 
@@ -117,7 +117,7 @@
     }
     )GLSL";
 
-    // ---------- Particle fragment shader -----------------------------------------
+    // Particle fragment shader
     static const char* FRAG_SRC = R"GLSL(
     #version 450 core
 
@@ -153,12 +153,12 @@
     }
     )GLSL";
 
-    // ---------- Compute shader — simulation step ---------------------------------
+    // Compute shader — simulation step
     // Each invocation handles one particle.
     // Buffers: binding 0 = read positions (vec4), binding 1 = write positions (vec4)
     //          binding 2 = read velocities (vec4), binding 3 = write velocities (vec4)
 
-    // ---------- Full-screen quad vertex shader (blur pass) -----------------------
+    // Full-screen quad vertex shader (blur pass)
     static const char* QUAD_VERT_SRC = R"GLSL(
     #version 450 core
     layout(location = 0) in vec2 aPos;
@@ -169,7 +169,7 @@
     }
     )GLSL";
 
-    // ---------- Depth-of-field blur fragment shader ------------------------------
+    // Depth-of-field blur fragment shader
     static const char* BLUR_FRAG_SRC = R"GLSL(
     #version 450 core
 
@@ -215,7 +215,7 @@
     }
     )GLSL";
 
-    // ─── Utility: compile + link shaders ─────────────────────────────────────────
+    // Utility: compile + link shaders
     static GLuint compileShader(GLenum type, const char* src)
     {
         GLuint sh = glCreateShader(type);
@@ -251,7 +251,7 @@
         return prog;
     }
 
-    // ─── Matrix helpers (column-major, OpenGL convention) ─────────────────────────
+    // Matrix helpers (column-major, OpenGL convention)
     struct Mat4 { float m[16] = {}; };
 
     static Mat4 perspective(float fovY_deg, float aspect, float near, float far)
@@ -298,7 +298,7 @@
         return c;
     }
 
-    // ─── FBO setup ───────────────────────────────────────────────────────────────
+    // FBO setup
     static void setupFBO(int w, int h)
     {
         if (g_fbo) {
@@ -333,7 +333,7 @@
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
 
-    // ─── Initialisation ───────────────────────────────────────────────────────────
+    // Initialisation
     static void initParticles()
     {
         // CPU-side initialisation: random positions + velocities
@@ -391,13 +391,13 @@
 
     static void initGL()
     {
-        // ── Render program ───────────────────────────────────────────────────────
+        // Render program
         g_renderProg = linkProgram({
             compileShader(GL_VERTEX_SHADER,   VERT_SRC),
             compileShader(GL_FRAGMENT_SHADER, FRAG_SRC)
         });
 
-        // ── Blur program ─────────────────────────────────────────────────────────
+        // Blur program
         g_blurProg = linkProgram({
             compileShader(GL_VERTEX_SHADER,   QUAD_VERT_SRC),
             compileShader(GL_FRAGMENT_SHADER, BLUR_FRAG_SRC)
@@ -439,7 +439,7 @@
         glClearColor(0.0f, 0.0f, 0.03f, 1.0f);
     }
 
-    // ─── Unproject mouse to z=0 plane ────────────────────────────────────────────
+    // Unproject mouse to z=0 plane
     static void unprojectMouse(float ndcX, float ndcY, float& wx, float& wy)
     {
         // Approximate: use camera distance and FOV to back-project to z=0 plane
@@ -459,7 +459,7 @@
         wy = ndcY * 0.9f;
     }
 
-    // ─── Simulation step (compute shader) ─────────────────────────────────────────
+    // Simulation step (compute shader)
     // Forward declaration (implemented in your CUDA .cu file)
     extern "C" void cudaStepSimulation(
         float time,
@@ -487,7 +487,6 @@
             wx, wy
         );
 
-        // flip buffers (CUDA writes into "next")
         g_pingPong = 1 - g_pingPong;
 
         // decay mouse force
@@ -495,16 +494,16 @@
         g_mouseDY *= 0.85f;
     }
 
-    // ─── GLUT callbacks ───────────────────────────────────────────────────────────
+    // GLUT callbacks
     static void display()
     {
         static float startTime = glutGet(GLUT_ELAPSED_TIME) / 1000.0f;
         float time = glutGet(GLUT_ELAPSED_TIME) / 1000.0f - startTime;
 
-        // ── Simulation step ──────────────────────────────────────────────────────
+        // Simulation step
         stepSimulation(time);
 
-        // ── Build MVP ────────────────────────────────────────────────────────────
+        // Build MVP
         float az = g_azimuth   * 3.14159265f / 180.0f;
         float el = g_elevation * 3.14159265f / 180.0f;
         float ex = g_distance * cosf(el) * sinf(az);
@@ -515,7 +514,7 @@
         Mat4 proj = perspective(60.0f, (float)g_width / g_height, 0.01f, 10.0f);
         Mat4 mvp  = mul(proj, view);
 
-        // ── Render to FBO ────────────────────────────────────────────────────────
+        // Render to FBO
         glBindFramebuffer(GL_FRAMEBUFFER, g_fbo);
         glViewport(0, 0, g_width, g_height);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -533,7 +532,7 @@
         glDrawArrays(GL_POINTS, 0, N_PARTICLES);
         glBindVertexArray(0);
 
-        // ── Depth-of-field blur pass → default framebuffer ───────────────────────
+        // Depth-of-field blur pass → default framebuffer
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, g_width, g_height);
         glClear(GL_COLOR_BUFFER_BIT);
@@ -568,7 +567,7 @@
             char title[128];
             snprintf(title, sizeof(title),
                     "Fluid Renderer  |  %dk particles  |  %.1f FPS  |  maxSpd=%.2f",
-                    N_PARTICLES / 1000, frames / (time - lastPrint), g_maxSpeed);
+                    N_PARTICLES / 100, frames / (time - lastPrint), g_maxSpeed);
             glutSetWindowTitle(title);
             frames    = 0;
             lastPrint = time;
@@ -621,7 +620,6 @@
 
     static void passiveMotion(int x, int y)
     {
-        // Track mouse position even without buttons held (for force field)
         int dx = x - g_lastMouseX;
         int dy = y - g_lastMouseY;
 
@@ -654,7 +652,7 @@
         }
     }
 
-    // ─── Entry point ─────────────────────────────────────────────────────────────
+    // Entry point ─────────────────────────────────────────────────────────────
     int main(int argc, char** argv)
     {
         glutInit(&argc, argv);
@@ -691,7 +689,7 @@
             "  R           : reset simulation\n"
             "  ESC/Q       : quit\n"
             "Particles: %d  (%.1f M)\n",
-            N_PARTICLES, N_PARTICLES / 1e6f);
+            N_PARTICLES * 10, N_PARTICLES / 1e5f);
 
         glutMainLoop();
         return 0;

@@ -8,7 +8,6 @@
 #include <cmath>
 #include <iostream>
 #include "helper_math.h"
-#include "floatGrid.hu"
 
 #define GRID_SIZE 65536
 #define CELL_SIZE 0.05f
@@ -21,8 +20,8 @@
 #define K              .04f
 #define VISC           0.2f
 #define DT              0.01f
-#define MOUSE_RADIUS    0.35f
-#define MOUSE_STRENGTH  1.0f
+#define MOUSE_RADIUS    0.75f
+#define MOUSE_STRENGTH  200.0f
 #define GRAVITY         3.18f
 #define MAX_DIST        1.0f
 #define REPULSE_FORCE   0.01f
