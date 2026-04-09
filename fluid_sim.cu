@@ -1,4 +1,4 @@
-// nvcc -std=c++17 -O2 fluid_renderer.cpp fluid_sim.cu -o fluid_renderer -lGL -lGLEW -lglut
+// nvcc -std=c++17 -O2 fluid_renderer.cpp fluid_sim.cu -o fluid_renderer.out -lGL -lGLEW -lglut
 // __NV_PRIME_RENDER_OFFLOAD=1 __GLX_VENDOR_LIBRARY_NAME=nvidia ./fluid_renderer
 
 #include <thrust/sort.h>
@@ -12,19 +12,18 @@
 #define GRID_SIZE 65536
 #define CELL_SIZE 0.05f
 
-#define H              0.1f
+#define H              0.09f
 #define H2             (H * H)
 
 #define MASS           1.0f
-#define REST_DENSITY   0.5f
+#define REST_DENSITY   0.6f
 #define K              .04f
-#define VISC           0.2f
-#define DT              0.01f
-#define MOUSE_RADIUS    0.75f
-#define MOUSE_STRENGTH  200.0f
+#define VISC           0.3f
+#define DT              0.01667f
+#define MOUSE_RADIUS    0.5f
+#define MOUSE_STRENGTH  300.0f
 #define GRAVITY         3.18f
 #define MAX_DIST        1.0f
-#define REPULSE_FORCE   0.01f
 
 bool firstStep = true;
 uint* d_particleHash;
@@ -49,7 +48,7 @@ __device__ uint calcGridHash(int3 gridPos) {
     return ((gridPos.x * p1) ^ (gridPos.y * p2) ^ (gridPos.z * p3)) % GRID_SIZE;
 }
 
-__device__ float hash(uint32_t n)
+__device__ float turbHash(uint32_t n)
 {
     n = (n << 13u) ^ n;
     n = n * (n * n * 15731u + 0x789221u) + 0x13763125u;
@@ -61,13 +60,13 @@ __device__ float poly6(float r2, float h2) {
     return (diff > 0.0f) ? diff * diff * diff : 0.0f;
 }
 
-__device__ float spikyGrad(float r, float h) {
-    float diff = h - r;
+__device__ float spikyGrad(float r) {
+    float diff = H - r;
     return (diff > 0.0f) ? diff * diff : 0.0f;
 }
 
-__device__ float viscosityLaplacian(float r, float h) {
-    return (r < h) ? (h - r) : 0.0f;
+__device__ float viscosityLaplacian(float r) {
+    return (r < H) ? (H - r) : 0.0f;
 }
 
 __global__ void computeHash(
@@ -91,7 +90,6 @@ __global__ void buildGrid(
     uint* cellStart,
     uint* cellEnd,
     uint* particleHash,
-    uint* particleIndex,
     uint N
 ) {
     int id = blockIdx.x * blockDim.x + threadIdx.x;
@@ -118,16 +116,13 @@ __global__ void buildGrid(
 __global__ void computeDensity(
     float* density,
     float4* pos,
-    uint* particleIndex,
     uint* cellStart,
     uint* cellEnd,
     uint N
 ) {
     int id = blockIdx.x * blockDim.x + threadIdx.x;
     if (id >= N) return;
-
-    uint i = particleIndex[id];
-    float3 pi = make_float3(pos[i]);
+    float3 pi = make_float3(pos[id]);
 
     float d = 0.0f;
 
@@ -144,8 +139,7 @@ __global__ void computeDensity(
         uint end   = cellEnd[hash];
 
         for (uint j = start; j < end; j++) {
-            uint pjIndex = particleIndex[j];
-            float3 pj = make_float3(pos[pjIndex]);
+            float3 pj = make_float3(pos[j]);
 
             float3 rij = pi - pj;
             float r2 = dot(rij, rij);
@@ -156,7 +150,7 @@ __global__ void computeDensity(
         }
     }
 
-    density[i] = d;
+    density[id] = d;
 }
 
 __global__ void simulateKernel(
@@ -165,7 +159,6 @@ __global__ void simulateKernel(
     float4* velIn,
     float4* velOut,
     float* density,
-    uint* particleIndex,
     uint* cellStart,
     uint* cellEnd,
     uint N,
@@ -178,12 +171,10 @@ __global__ void simulateKernel(
     int id = blockIdx.x * blockDim.x + threadIdx.x;
     if (id >= N) return;
 
-    uint i = particleIndex[id];
+    float3 pi = make_float3(posIn[id]);
+    float3 vi = make_float3(velIn[id]);
 
-    float3 pi = make_float3(posIn[i]);
-    float3 vi = make_float3(velIn[i]);
-
-    float rho_i = density[i];
+    float rho_i = density[id];
     float pressure_i = K * (rho_i - REST_DENSITY);
 
     float3 force = make_float3(0,0,0);
@@ -201,30 +192,29 @@ __global__ void simulateKernel(
         uint end   = cellEnd[hash];
 
         for (uint j = start; j < end; j++) {
-            uint pjIndex = particleIndex[j];
-            if (pjIndex == i) continue;
+            if (j == id) continue;
 
-            float3 pj = make_float3(posIn[pjIndex]);
-            float3 vj = make_float3(velIn[pjIndex]);
+            float3 pj = make_float3(posIn[j]);
+            float3 vj = make_float3(velIn[j]);
 
             float3 rij = pi - pj;
             float r = length(rij);
 
             if (r < H && r > 1e-5f) {
 
-                float rho_j = density[pjIndex];
+                float rho_j = density[j];
                 float pressure_j = K * (rho_j - REST_DENSITY);
 
                 float3 dir = rij / r;
 
                 // Pressure
-                float grad = spikyGrad(r, H);
+                float grad = spikyGrad(r);
                 force += -dir * MASS *
                     (pressure_i + pressure_j) /
                     (2.0f * rho_j + 1e-5f) * grad;
 
                 // Viscosity
-                float lap = viscosityLaplacian(r, H);
+                float lap = viscosityLaplacian(r);
                 force += VISC * (vj - vi) * lap;
             }
         }
@@ -250,9 +240,9 @@ __global__ void simulateKernel(
     }
 
     // Turbulence (kept)
-    float n0 = hash(i * 3u + (uint32_t)(time * 30));
-    float n1 = hash(i * 7u + (uint32_t)(time * 30) + 1);
-    float n2 = hash(i * 13u + (uint32_t)(time * 30) + 2);
+    float n0 = turbHash(id * 3u + (uint32_t)(time * 30));
+    float n1 = turbHash(id * 7u + (uint32_t)(time * 30) + 1);
+    float n2 = turbHash(id * 13u + (uint32_t)(time * 30) + 2);
 
     force += (make_float3(n0,n1,n2) - 0.5f) * 0.0002f;
 
@@ -272,8 +262,8 @@ __global__ void simulateKernel(
     if (pi.z > B) { pi.z = B; vi.z *= -0.5f; }
     if (pi.z < -B){ pi.z = -B; vi.z *= -0.5f; }
 
-    posOut[i] = make_float4(pi, 0);
-    velOut[i] = make_float4(vi, 0);
+    posOut[id] = make_float4(pi, 0);
+    velOut[id] = make_float4(vi, 0);
 }
 
 extern "C" void cudaStepSimulation(float time, cudaGraphicsResource* posRes[2], cudaGraphicsResource* velRes[2], int& pingPong, int N, float mouseDX, float mouseDY, float mouseX, float mouseY) {
@@ -304,12 +294,9 @@ extern "C" void cudaStepSimulation(float time, cudaGraphicsResource* posRes[2], 
     cudaGraphicsResourceGetMappedPointer((void**)&velIn,  &size, velRes[read]);
     cudaGraphicsResourceGetMappedPointer((void**)&velOut, &size, velRes[write]);
 
-    int blockSize = 256;
-    int gridSize  = (N + blockSize - 1) / blockSize;
+    uint blockSize = 256;
+    uint gridSize  = (N + blockSize - 1) / blockSize;
 
-    // -----------------------------
-    // 1. Compute hash + index
-    // -----------------------------
     computeHash<<<gridSize, blockSize>>>(
         d_particleHash,
         d_particleIndex,
@@ -317,9 +304,6 @@ extern "C" void cudaStepSimulation(float time, cudaGraphicsResource* posRes[2], 
         N
     );
 
-    // -----------------------------
-    // 2. Sort by hash
-    // -----------------------------
     thrust::sort_by_key(
         thrust::device,
         d_particleHash,
@@ -327,45 +311,30 @@ extern "C" void cudaStepSimulation(float time, cudaGraphicsResource* posRes[2], 
         d_particleIndex
     );
 
-    // -----------------------------
-    // 3. Reset grid
-    // -----------------------------
     cudaMemset(d_cellStart, 0xffffffff, GRID_SIZE * sizeof(uint));
     cudaMemset(d_cellEnd,   0,          GRID_SIZE * sizeof(uint));
 
-    // -----------------------------
-    // 4. Build grid
-    // -----------------------------
     buildGrid<<<gridSize, blockSize>>>(
         d_cellStart,
         d_cellEnd,
         d_particleHash,
-        d_particleIndex,
         N
     );
 
-    // -----------------------------
-    // 5. Density pass (PASS 1)
-    // -----------------------------
     computeDensity<<<gridSize, blockSize>>>(
         d_density,
         posIn,
-        d_particleIndex,
         d_cellStart,
         d_cellEnd,
         N
     );
 
-    // -----------------------------
-    // 6. Force + integrate (PASS 2)
-    // -----------------------------
     simulateKernel<<<gridSize, blockSize>>>(
         posIn,
         posOut,
         velIn,
         velOut,
         d_density,
-        d_particleIndex,
         d_cellStart,
         d_cellEnd,
         N,
